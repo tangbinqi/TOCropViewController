@@ -142,6 +142,22 @@
 @property (nonatomic, assign) NSInteger angle;
 
 /**
+ Whether the image has been flipped horizontally.
+ 
+ This property can be set before the controller is presented to have
+ the image 'restored' to a previous cropping layout.
+ */
+@property (nonatomic, assign) BOOL horizontallyFlipped;
+
+/**
+ Whether the image has been flipped vertically.
+ 
+ This property can be set before the controller is presented to have
+ the image 'restored' to a previous cropping layout.
+ */
+@property (nonatomic, assign) BOOL verticallyFlipped;
+
+/**
  The toolbar view managed by this view controller.
  */
 @property (nonnull, nonatomic, strong, readonly) TOCropToolbar *toolbar;

@@ -146,6 +146,8 @@ typedef NS_ENUM(NSInteger, TOCropViewOverlayEdge) {
     self.cropAdjustingDelay = kTOCropTimerDuration;
     self.cropViewPadding = kTOCropViewPadding;
     self.maximumZoomScale = kTOMaximumZoomScale;
+    self.horizontallyFlipped = NO;
+    self.verticallyFlipped = NO;
 
     /* Dynamic animation blurring is only possible on iOS 9, however since the API was available on iOS 8,
      we'll need to manually check the system version to ensure that it's available. */
@@ -681,9 +683,11 @@ typedef NS_ENUM(NSInteger, TOCropViewOverlayEdge) {
         _aspectRatio = CGSizeZero;
     }
 
-    if (animated == NO || self.angle != 0) {
+    if (animated == NO || self.angle != 0 || self.horizontallyFlipped || self.verticallyFlipped) {
         // Reset all of the rotation transforms
         _angle = 0;
+        _horizontallyFlipped = NO;
+        _verticallyFlipped = NO;
 
         // Set the scroll to 1.0f to reset the transform scale
         self.scrollView.zoomScale = 1.0f;
@@ -1370,6 +1374,26 @@ typedef NS_ENUM(NSInteger, TOCropViewOverlayEdge) {
     if (!self.initialSetupPerformed) {
         return;
     }
+    
+    // Early exit: if the current crop box already matches the target aspect ratio,
+    // skip the recalculation to avoid unnecessary position shifts
+    CGRect currentCropFrame = self.cropBoxFrame;
+    if (currentCropFrame.size.width > FLT_EPSILON && currentCropFrame.size.height > FLT_EPSILON) {
+        CGFloat currentRatio = currentCropFrame.size.width / currentCropFrame.size.height;
+        CGFloat targetRatio;
+        
+        // Handle special case: zero size means use image's original ratio
+        if (aspectRatio.width < FLT_EPSILON && aspectRatio.height < FLT_EPSILON) {
+            targetRatio = self.imageSize.width / self.imageSize.height;
+        } else {
+            targetRatio = aspectRatio.width / aspectRatio.height;
+        }
+        
+        // If ratios match within tolerance, no need to recalculate
+        if (fabs(currentRatio - targetRatio) < 0.01) {
+            return;
+        }
+    }
 
     BOOL zoomOut = NO;
 
@@ -1503,33 +1527,8 @@ typedef NS_ENUM(NSInteger, TOCropViewOverlayEdge) {
 
     _angle = newAngle;
 
-    // Convert the new angle to radians
-    CGFloat angleInRadians = 0.0f;
-    switch (newAngle) {
-    case 90:
-        angleInRadians = M_PI_2;
-        break;
-    case -90:
-        angleInRadians = -M_PI_2;
-        break;
-    case 180:
-        angleInRadians = M_PI;
-        break;
-    case -180:
-        angleInRadians = -M_PI;
-        break;
-    case 270:
-        angleInRadians = (M_PI + M_PI_2);
-        break;
-    case -270:
-        angleInRadians = -(M_PI + M_PI_2);
-        break;
-    default:
-        break;
-    }
-
-    // Set up the transformation matrix for the rotation
-    CGAffineTransform rotation = CGAffineTransformRotate(CGAffineTransformIdentity, angleInRadians);
+    // Get the combined transform (rotation + flips)
+    CGAffineTransform rotation = [self currentImageTransform];
 
     // Work out how much we'll need to scale everything to fit to the new rotation
     CGRect contentBounds = self.contentBounds;
@@ -1679,6 +1678,188 @@ typedef NS_ENUM(NSInteger, TOCropViewOverlayEdge) {
     [self checkForCanReset];
 }
 
+#pragma mark - Image Flip Methods -
+
+- (void)flipImageHorizontallyAnimated:(BOOL)animated {
+    // Toggle the horizontal flip state
+    _horizontallyFlipped = !_horizontallyFlipped;
+    
+    // Apply the flip transformation with animation
+    [self applyFlipTransformAnimated:animated isHorizontal:YES];
+}
+
+- (void)flipImageVerticallyAnimated:(BOOL)animated {
+    // Toggle the vertical flip state
+    _verticallyFlipped = !_verticallyFlipped;
+    
+    // Apply the flip transformation with animation
+    [self applyFlipTransformAnimated:animated isHorizontal:NO];
+}
+
+- (void)applyFlipTransformAnimated:(BOOL)animated isHorizontal:(BOOL)isHorizontal {
+    // Cancel any pending resizing timers
+    if (self.resetTimer) {
+        [self cancelResetTimer];
+        [self setEditing:NO resetCropBox:YES animated:NO];
+        [self captureStateForImageRotation];
+    }
+    
+    // Build the combined transform with rotation and flips
+    CGAffineTransform transform = [self currentImageTransform];
+    
+    // Get current state for maintaining the view position
+    CGRect cropBoxFrame = self.cropBoxFrame;
+    CGPoint cropMidPoint = (CGPoint){CGRectGetMidX(cropBoxFrame), CGRectGetMidY(cropBoxFrame)};
+    CGPoint cropTargetPoint = (CGPoint){cropMidPoint.x + self.scrollView.contentOffset.x, cropMidPoint.y + self.scrollView.contentOffset.y};
+    
+    // Calculate the relative position of the target point within the content
+    CGFloat relativeX = cropTargetPoint.x / self.scrollView.contentSize.width;
+    CGFloat relativeY = cropTargetPoint.y / self.scrollView.contentSize.height;
+    
+    // For horizontal flip, mirror the X position
+    // For vertical flip, mirror the Y position
+    if (isHorizontal) {
+        relativeX = 1.0 - relativeX;
+    } else {
+        relativeY = 1.0 - relativeY;
+    }
+    
+    // If we're animated, generate a snapshot view
+    UIView *snapshotView = nil;
+    if (animated) {
+        snapshotView = [self.foregroundContainerView snapshotViewAfterScreenUpdates:NO];
+        snapshotView.center = (CGPoint){CGRectGetMidX(self.contentBounds), CGRectGetMidY(self.contentBounds)};
+    }
+    
+    // Apply the transform to both image views
+    self.backgroundImageView.transform = transform;
+    self.foregroundImageView.transform = transform;
+    
+    // Match foreground to background
+    [self matchForegroundToBackground];
+    
+    // Calculate new content offset based on mirrored position
+    CGPoint newTargetPoint = CGPointZero;
+    newTargetPoint.x = relativeX * self.scrollView.contentSize.width;
+    newTargetPoint.y = relativeY * self.scrollView.contentSize.height;
+    
+    CGPoint midPoint = {CGRectGetMidX(cropBoxFrame), CGRectGetMidY(cropBoxFrame)};
+    CGPoint offset = CGPointZero;
+    offset.x = floorf(-midPoint.x + newTargetPoint.x);
+    offset.y = floorf(-midPoint.y + newTargetPoint.y);
+    
+    // Clamp the offset within valid bounds
+    offset.x = MAX(-self.scrollView.contentInset.left, offset.x);
+    offset.y = MAX(-self.scrollView.contentInset.top, offset.y);
+    offset.x = MIN(self.scrollView.contentSize.width - (cropBoxFrame.size.width - self.scrollView.contentInset.right), offset.x);
+    offset.y = MIN(self.scrollView.contentSize.height - (cropBoxFrame.size.height - self.scrollView.contentInset.bottom), offset.y);
+    
+    // If the new offset is equal to the old, manually update to trigger the delegate
+    if (offset.x == self.scrollView.contentOffset.x && offset.y == self.scrollView.contentOffset.y) {
+        [self matchForegroundToBackground];
+    }
+    
+    // If we're animated, play an animation
+    if (animated) {
+        [self addSubview:snapshotView];
+        
+        self.backgroundContainerView.hidden = YES;
+        self.foregroundContainerView.hidden = YES;
+        self.translucencyView.hidden = YES;
+        self.gridOverlayView.hidden = YES;
+        
+        [UIView animateWithDuration:0.35f
+                              delay:0.0f
+             usingSpringWithDamping:1.0f
+              initialSpringVelocity:0.8f
+                            options:UIViewAnimationOptionBeginFromCurrentState
+                         animations:^{
+                             // Create a flip transform for the snapshot
+                             CGAffineTransform flipTransform = isHorizontal ? 
+                                 CGAffineTransformMakeScale(-1.0, 1.0) : 
+                                 CGAffineTransformMakeScale(1.0, -1.0);
+                             snapshotView.transform = flipTransform;
+                         }
+                         completion:^(BOOL complete) {
+                             // Set the new content offset
+                             self.scrollView.contentOffset = offset;
+                             
+                             self.backgroundContainerView.hidden = NO;
+                             self.foregroundContainerView.hidden = NO;
+                             self.translucencyView.hidden = self.translucencyAlwaysHidden;
+                             self.gridOverlayView.hidden = NO;
+                             
+                             self.backgroundContainerView.alpha = 0.0f;
+                             self.gridOverlayView.alpha = 0.0f;
+                             self.translucencyView.alpha = 1.0f;
+                             
+                             [UIView animateWithDuration:0.35f
+                                              animations:^{
+                                                  snapshotView.alpha = 0.0f;
+                                                  self.backgroundContainerView.alpha = 1.0f;
+                                                  self.gridOverlayView.alpha = 1.0f;
+                                              }
+                                              completion:^(BOOL finished) {
+                                                  [snapshotView removeFromSuperview];
+                                              }];
+                         }];
+    } else {
+        // Apply the offset immediately
+        self.scrollView.contentOffset = offset;
+    }
+    
+    // Capture the state after flip for future rotations
+    [self captureCurrentStateForImageRotation];
+    
+    // Update reset state
+    [self checkForCanReset];
+}
+
+- (CGAffineTransform)currentImageTransform {
+    // Start with rotation transform
+    CGAffineTransform transform = CGAffineTransformIdentity;
+    
+    // Apply rotation if needed
+    if (self.angle != 0) {
+        CGFloat angleInRadians = 0.0f;
+        switch (self.angle) {
+            case 90:
+                angleInRadians = M_PI_2;
+                break;
+            case -90:
+                angleInRadians = -M_PI_2;
+                break;
+            case 180:
+                angleInRadians = M_PI;
+                break;
+            case -180:
+                angleInRadians = -M_PI;
+                break;
+            case 270:
+                angleInRadians = (M_PI + M_PI_2);
+                break;
+            case -270:
+                angleInRadians = -(M_PI + M_PI_2);
+                break;
+            default:
+                break;
+        }
+        transform = CGAffineTransformRotate(transform, angleInRadians);
+    }
+    
+    // Apply horizontal flip
+    if (self.horizontallyFlipped) {
+        transform = CGAffineTransformScale(transform, -1.0, 1.0);
+    }
+    
+    // Apply vertical flip
+    if (self.verticallyFlipped) {
+        transform = CGAffineTransformScale(transform, 1.0, -1.0);
+    }
+    
+    return transform;
+}
+
 - (void)captureStateForImageRotation {
     self.cropBoxLastEditedSize = self.cropBoxFrame.size;
     self.cropBoxLastEditedZoomScale = self.scrollView.zoomScale;
@@ -1695,6 +1876,8 @@ typedef NS_ENUM(NSInteger, TOCropViewOverlayEdge) {
     BOOL canReset = NO;
 
     if (self.angle != 0) {  // Image has been rotated
+        canReset = YES;
+    } else if (self.horizontallyFlipped || self.verticallyFlipped) {  // Image has been flipped
         canReset = YES;
     } else if (self.scrollView.zoomScale > self.scrollView.minimumZoomScale + FLT_EPSILON) {  // image has been zoomed in
         canReset = YES;

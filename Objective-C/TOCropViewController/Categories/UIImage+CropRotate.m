@@ -31,6 +31,18 @@
 }
 
 - (UIImage *)croppedImageWithFrame:(CGRect)frame angle:(NSInteger)angle circularClip:(BOOL)circular {
+    return [self croppedImageWithFrame:frame
+                                 angle:angle
+                          circularClip:circular
+                   horizontallyFlipped:NO
+                     verticallyFlipped:NO];
+}
+
+- (UIImage *)croppedImageWithFrame:(CGRect)frame
+                             angle:(NSInteger)angle
+                      circularClip:(BOOL)circular
+               horizontallyFlipped:(BOOL)horizontallyFlipped
+                 verticallyFlipped:(BOOL)verticallyFlipped {
     UIGraphicsImageRendererFormat *format = [UIGraphicsImageRendererFormat new];
     format.opaque = !self.hasAlpha && !circular;
     format.scale = self.scale;
@@ -63,6 +75,12 @@
 
             // Perform the rotation transformation
             CGContextRotateCTM(context, rotation);
+        }
+        
+        // Apply flip transformations if needed
+        if (horizontallyFlipped || verticallyFlipped) {
+            CGContextTranslateCTM(context, horizontallyFlipped ? self.size.width : 0, verticallyFlipped ? self.size.height : 0);
+            CGContextScaleCTM(context, horizontallyFlipped ? -1.0 : 1.0, verticallyFlipped ? -1.0 : 1.0);
         }
 
         // Draw the image with all of the transformation parameters applied.

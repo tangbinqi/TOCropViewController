@@ -34,6 +34,18 @@ NS_ASSUME_NONNULL_BEGIN
                                      angle:(NSInteger)angle
                               circularClip:(BOOL)circular;
 
+/// Crops a portion of an existing image object with flip support and returns it as a new image
+/// @param frame The region inside the image (In image pixel space) to crop
+/// @param angle If any, the angle the image is rotated at as well
+/// @param circular Whether the resulting image is returned as a square or a circle
+/// @param horizontallyFlipped Whether the image should be flipped horizontally
+/// @param verticallyFlipped Whether the image should be flipped vertically
+- (nonnull UIImage *)croppedImageWithFrame:(CGRect)frame
+                                     angle:(NSInteger)angle
+                              circularClip:(BOOL)circular
+                       horizontallyFlipped:(BOOL)horizontallyFlipped
+                         verticallyFlipped:(BOOL)verticallyFlipped;
+
 @end
 
 NS_ASSUME_NONNULL_END

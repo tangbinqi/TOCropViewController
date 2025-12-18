@@ -145,6 +145,16 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, assign) NSInteger angle;
 
 /**
+ Whether the image has been flipped horizontally
+ */
+@property (nonatomic, assign) BOOL horizontallyFlipped;
+
+/**
+ Whether the image has been flipped vertically
+ */
+@property (nonatomic, assign) BOOL verticallyFlipped;
+
+/**
  Hide all of the crop elements for transition animations
  */
 @property (nonatomic, assign) BOOL croppingViewsHidden;
@@ -273,6 +283,20 @@ The minimum croping aspect ratio. If set, user is prevented from setting croppin
  @param clockwise Whether the rotation is clockwise. Passing 'NO' means counterclockwise
  */
 - (void)rotateImageNinetyDegreesAnimated:(BOOL)animated clockwise:(BOOL)clockwise completion:(nullable void (^)(BOOL completed))completionHandler;
+
+/**
+ Flips the image horizontally (mirror effect)
+
+ @param animated Whether the transition is animated
+ */
+- (void)flipImageHorizontallyAnimated:(BOOL)animated;
+
+/**
+ Flips the image vertically
+
+ @param animated Whether the transition is animated
+ */
+- (void)flipImageVerticallyAnimated:(BOOL)animated;
 
 /**
  Animate the grid overlay graphic to be visible
