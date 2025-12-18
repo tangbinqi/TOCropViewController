@@ -1685,6 +1685,11 @@ typedef NS_ENUM(NSInteger, TOCropViewOverlayEdge) {
     self.cropBoxLastEditedMinZoomScale = self.scrollView.minimumZoomScale;
 }
 
+- (void)captureCurrentStateForImageRotation {
+    [self captureStateForImageRotation];
+    self.cropBoxLastEditedAngle = self.angle;
+}
+
 #pragma mark - Resettable State -
 - (void)checkForCanReset {
     BOOL canReset = NO;

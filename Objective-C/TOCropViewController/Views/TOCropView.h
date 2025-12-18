@@ -295,6 +295,17 @@ The minimum croping aspect ratio. If set, user is prevented from setting croppin
  */
 - (void)moveCroppedContentToCenterAnimated:(BOOL)animated;
 
+/**
+ Captures the current crop box state for use during subsequent 90-degree rotations.
+ 
+ Call this method after programmatically modifying the crop frame (e.g., after a mirror flip operation)
+ to ensure that subsequent rotation operations maintain the correct crop box size and position.
+ 
+ This updates internal state variables (cropBoxLastEditedSize, cropBoxLastEditedAngle, etc.)
+ so that the rotation logic doesn't fall back to incorrect initial values.
+ */
+- (void)captureCurrentStateForImageRotation;
+
 @end
 
 NS_ASSUME_NONNULL_END
