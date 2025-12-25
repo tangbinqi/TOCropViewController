@@ -1589,7 +1589,9 @@ typedef NS_ENUM(NSInteger, TOCropViewOverlayEdge) {
     cropTargetPoint.y *= scale;
 
     // swap the target dimensions to match a 90 degree rotation (clockwise or counterclockwise)
+    // When the image was flipped before rotation, the coordinate mapping changes
     CGFloat swap = cropTargetPoint.x;
+    
     if (clockwise) {
         cropTargetPoint.x = self.scrollView.contentSize.width - cropTargetPoint.y;
         cropTargetPoint.y = swap;
@@ -1681,16 +1683,34 @@ typedef NS_ENUM(NSInteger, TOCropViewOverlayEdge) {
 #pragma mark - Image Flip Methods -
 
 - (void)flipImageHorizontallyAnimated:(BOOL)animated {
-    // Toggle the horizontal flip state
-    _horizontallyFlipped = !_horizontallyFlipped;
+    // Determine if the image is rotated 90 or 270 degrees
+    // When rotated 90/270, we need to toggle vertical flip to achieve visual horizontal flip
+    BOOL isRotated90or270 = (self.angle == 90 || self.angle == -90 || self.angle == 270 || self.angle == -270);
+    
+    if (isRotated90or270) {
+        // When rotated 90/270, toggle vertical flip to achieve visual horizontal flip
+        _verticallyFlipped = !_verticallyFlipped;
+    } else {
+        // When rotated 0/180, toggle horizontal flip normally
+        _horizontallyFlipped = !_horizontallyFlipped;
+    }
     
     // Apply the flip transformation with animation
     [self applyFlipTransformAnimated:animated isHorizontal:YES];
 }
 
 - (void)flipImageVerticallyAnimated:(BOOL)animated {
-    // Toggle the vertical flip state
-    _verticallyFlipped = !_verticallyFlipped;
+    // Determine if the image is rotated 90 or 270 degrees
+    // When rotated 90/270, we need to toggle horizontal flip to achieve visual vertical flip
+    BOOL isRotated90or270 = (self.angle == 90 || self.angle == -90 || self.angle == 270 || self.angle == -270);
+    
+    if (isRotated90or270) {
+        // When rotated 90/270, toggle horizontal flip to achieve visual vertical flip
+        _horizontallyFlipped = !_horizontallyFlipped;
+    } else {
+        // When rotated 0/180, toggle vertical flip normally
+        _verticallyFlipped = !_verticallyFlipped;
+    }
     
     // Apply the flip transformation with animation
     [self applyFlipTransformAnimated:animated isHorizontal:NO];
@@ -1716,8 +1736,11 @@ typedef NS_ENUM(NSInteger, TOCropViewOverlayEdge) {
     CGFloat relativeX = cropTargetPoint.x / self.scrollView.contentSize.width;
     CGFloat relativeY = cropTargetPoint.y / self.scrollView.contentSize.height;
     
-    // For horizontal flip, mirror the X position
-    // For vertical flip, mirror the Y position
+    // Since the flip transform is now adjusted in currentImageTransform to always
+    // produce visual horizontal/vertical flip regardless of rotation angle,
+    // we can simply mirror the corresponding axis in screen space:
+    // - Horizontal flip (visual left-right) -> mirror X axis
+    // - Vertical flip (visual up-down) -> mirror Y axis
     if (isHorizontal) {
         relativeX = 1.0 - relativeX;
     } else {

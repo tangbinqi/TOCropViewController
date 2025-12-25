@@ -678,6 +678,9 @@ static const CGFloat kTOCropViewControllerToolbarHeight = 44.0f;
 }
 
 - (void)rotateCropViewCounterclockwise {
+    [self.cropView flipImageHorizontallyAnimated:YES];
+    return;
+    
     self.toolbar.disableRotationButtons = YES;
     [self.cropView rotateImageNinetyDegreesAnimated:YES
                                           clockwise:NO
