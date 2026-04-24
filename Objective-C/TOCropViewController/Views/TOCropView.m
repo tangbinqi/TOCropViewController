@@ -1375,32 +1375,27 @@ typedef NS_ENUM(NSInteger, TOCropViewOverlayEdge) {
         return;
     }
     
-    // Early exit: if the current crop box already matches the target aspect ratio,
-    // skip the recalculation to avoid unnecessary position shifts
+    BOOL revertingToOriginalAspectRatio = (aspectRatio.width < FLT_EPSILON && aspectRatio.height < FLT_EPSILON);
+
+    // Early exit: if the current crop box already matches the target aspect ratio and we are not
+    // forcing a reset back to the image's original fit, skip the recalculation to avoid shifts.
     CGRect currentCropFrame = self.cropBoxFrame;
     if (currentCropFrame.size.width > FLT_EPSILON && currentCropFrame.size.height > FLT_EPSILON) {
         CGFloat currentRatio = currentCropFrame.size.width / currentCropFrame.size.height;
-        CGFloat targetRatio;
-        
-        // Handle special case: zero size means use image's original ratio
-        if (aspectRatio.width < FLT_EPSILON && aspectRatio.height < FLT_EPSILON) {
-            targetRatio = self.imageSize.width / self.imageSize.height;
-        } else {
-            targetRatio = aspectRatio.width / aspectRatio.height;
-        }
-        
-        // If ratios match within tolerance, no need to recalculate
-        if (fabs(currentRatio - targetRatio) < 0.01) {
+        CGFloat targetRatio = revertingToOriginalAspectRatio ? (self.imageSize.width / self.imageSize.height) : (aspectRatio.width / aspectRatio.height);
+
+        if (fabs(currentRatio - targetRatio) < 0.01 && !revertingToOriginalAspectRatio) {
             return;
         }
     }
 
     BOOL zoomOut = NO;
+    BOOL zoomedToMinimumScale = fabs(self.scrollView.zoomScale - self.scrollView.minimumZoomScale) < 0.001f;
 
     // Passing in an empty size will revert back to the image aspect ratio
-    if (aspectRatio.width < FLT_EPSILON && aspectRatio.height < FLT_EPSILON) {
+    if (revertingToOriginalAspectRatio) {
         aspectRatio = (CGSize){self.imageSize.width, self.imageSize.height};
-        zoomOut = YES;  // Prevent from steadily zooming in when cycling between alternate aspectRatios and original
+        zoomOut = YES;  // Original ratio should always return to the image's fitted state.
     }
 
     CGRect boundsFrame = self.contentBounds;
@@ -1478,7 +1473,7 @@ typedef NS_ENUM(NSInteger, TOCropViewOverlayEdge) {
         self.scrollView.contentOffset = offset;
         self.cropBoxFrame = cropBoxFrame;
 
-        if (zoomOut) {
+        if (zoomOut || zoomedToMinimumScale) {
             self.scrollView.zoomScale = self.scrollView.minimumZoomScale;
         }
 
@@ -1798,8 +1793,8 @@ typedef NS_ENUM(NSInteger, TOCropViewOverlayEdge) {
                             options:UIViewAnimationOptionBeginFromCurrentState
                          animations:^{
                              // Create a flip transform for the snapshot
-                             CGAffineTransform flipTransform = isHorizontal ? 
-                                 CGAffineTransformMakeScale(-1.0, 1.0) : 
+                             CGAffineTransform flipTransform = isHorizontal ?
+                                 CGAffineTransformMakeScale(-1.0, 1.0) :
                                  CGAffineTransformMakeScale(1.0, -1.0);
                              snapshotView.transform = flipTransform;
                          }
@@ -1937,3 +1932,4 @@ typedef NS_ENUM(NSInteger, TOCropViewOverlayEdge) {
 }
 
 @end
+
